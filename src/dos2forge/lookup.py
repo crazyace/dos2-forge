@@ -39,50 +39,57 @@ def lookup(game: Game, query: str) -> LookupResult:
     result = LookupResult(query=query.strip())
     query = result.query
 
+    indexes = (game.templates, game.level_instances)
+
     if _UUID_RE.match(query):
-        template = game.templates.by_map_key.get(query.lower()) or (
-            game.templates.by_map_key.get(query)
-        )
-        if template:
-            result.sections.append(_template_section(game, template))
+        for index in indexes:
+            template = index.by_map_key.get(query.lower()) or (
+                index.by_map_key.get(query)
+            )
+            if template:
+                result.sections.append(_template_section(game, template))
         return result
 
     if _HANDLE_RE.match(query):
         text = game.localization.resolve(query, default="")
         if text:
             result.sections.append(f"localization {query}\n  text: {text}")
-        for template in game.templates.by_map_key.values():
-            if template.handle.split(";", 1)[0] == query:
-                result.sections.append(_template_section(game, template))
+        for index in indexes:
+            for template in index.by_map_key.values():
+                if template.handle.split(";", 1)[0] == query:
+                    result.sections.append(_template_section(game, template))
         return result
 
     if query in game.stats:
         # The shared stats block prints once; the templates that use it
         # follow without repeating it.
         result.sections.append(_stats_section(game, query))
-        for template in game.templates.by_stats.get(query, ()):
-            result.sections.append(
-                _template_section(game, template, include_stats=False)
-            )
+        for index in indexes:
+            for template in index.by_stats.get(query, ()):
+                result.sections.append(
+                    _template_section(game, template, include_stats=False)
+                )
         return result
 
-    for template in game.templates.by_name.get(query.lower(), ()):
-        result.sections.append(_template_section(game, template))
+    for index in indexes:
+        for template in index.by_name.get(query.lower(), ()):
+            result.sections.append(_template_section(game, template))
     if result.found:
         return result
 
-    # Fuzzy fallback: substring over template names, display names, and
-    # stats entry names.
+    # Fuzzy fallback: substring over template/instance names, display
+    # names, and stats entry names.
     needle = _fold(query)
     seen: set[str] = set()
-    for template in game.templates.by_map_key.values():
-        if needle in _fold(template.name) or needle in _fold(template.display_name):
-            label = f"{template.name}  ({template.display_name})  {template.map_key}"
-            if label not in seen:
-                seen.add(label)
-                result.suggestions.append(label)
-            if len(result.suggestions) >= _MAX_SUGGESTIONS:
-                return result
+    for index in indexes:
+        for template in index.by_map_key.values():
+            if needle in _fold(template.name) or needle in _fold(template.display_name):
+                label = f"{template.name}  ({template.display_name})  {template.map_key}"
+                if label not in seen:
+                    seen.add(label)
+                    result.suggestions.append(label)
+                if len(result.suggestions) >= _MAX_SUGGESTIONS:
+                    return result
     for entry in game.stats:
         if needle in _fold(entry.name):
             label = f"{entry.name}  (stats: {entry.type or 'entry'})"
@@ -107,19 +114,26 @@ def lookup(game: Game, query: str) -> LookupResult:
 def _template_section(
     game: Game, template: RootTemplate, include_stats: bool = True
 ) -> str:
-    lines = [f"template {template.map_key}"]
+    kind = "instance" if "instance" in template.type else "template"
+    lines = [f"{kind} {template.map_key}"]
+    base = game.templates.by_map_key.get(template.parent_template)
     for label, value in (
         ("name", template.name),
         ("display name", template.display_name),
         ("handle", template.handle),
         ("type", template.type),
+        ("level", template.level),
         ("stats", template.stats),
         ("icon", template.icon),
-        ("parent", template.parent_template),
+        ("base template", template.parent_template),
+        ("base name", base.name if base else ""),
         ("source", template.source),
     ):
         if value:
             lines.append(f"  {label}: {value}")
+    # An instance without its own stats inherits its base template's.
+    if include_stats and not template.stats and base and base.stats:
+        template = base
     if include_stats and template.stats and template.stats in game.stats:
         lines.append("")
         lines.append(_stats_section(game, template.stats, indent="  "))

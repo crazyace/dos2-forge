@@ -43,15 +43,18 @@ class LoadIssue:
 
 @dataclass
 class RootTemplate:
+    """A GameObjects node: a root template or a level/global instance."""
+
     map_key: str
     name: str = ""
     display_name: str = ""  # resolved text (localization, else inline)
     handle: str = ""  # DisplayName TranslatedString handle
-    type: str = ""  # item / character / ...
+    type: str = ""  # item / character / item instance / ...
     stats: str = ""  # stats entry id
     icon: str = ""
-    parent_template: str = ""
+    parent_template: str = ""  # ParentTemplateId / instance TemplateName
     source: str = ""  # archived path the definition came from
+    level: str = ""  # level the instance belongs to (instances only)
 
 
 @dataclass
@@ -246,6 +249,41 @@ class Game:
                     index.add(template)
         return index
 
+    @cached_property
+    def level_instances(self) -> RootTemplateIndex:
+        """Item/character instances placed in level and global data.
+
+        Unique quest items live here rather than in RootTemplates: an
+        instance references its base template (``TemplateName``) and
+        overrides fields like the display name.
+        """
+        index = RootTemplateIndex()
+        localization = self.localization
+        for name, data in self._layered_matches(
+            ("/levels/", "/globals/"), (".lsf", ".lsx")
+        ):
+            lowered = name.lower()
+            if "/items/" in lowered:
+                kind = "item instance"
+            elif "/characters/" in lowered:
+                kind = "character instance"
+            else:
+                continue
+            try:
+                document = parse_resource(data)
+            except ValueError as exc:
+                self.load_issues.append(LoadIssue(name, str(exc)))
+                continue
+            for node in document.find_all("GameObjects"):
+                instance = self._template_from_node(node, name, localization)
+                if instance is None:
+                    continue
+                if not instance.type:
+                    instance.type = kind
+                instance.level = node.get("LevelName", "") or _level_from_path(name)
+                index.add(instance)
+        return index
+
     def _template_from_node(
         self, node: LsxNode, source: str, localization: Localization
     ) -> RootTemplate | None:
@@ -264,11 +302,15 @@ class Game:
             type=node.get("Type", "") or "",
             stats=node.get("Stats", "") or "",
             icon=node.get("Icon", "") or "",
-            parent_template=node.get("ParentTemplateId", "") or "",
+            parent_template=(
+                node.get("TemplateName", "") or node.get("ParentTemplateId", "") or ""
+            ),
             source=source,
         )
 
-    def _layered_matches(self, marker: str, suffixes: str | tuple[str, ...]):
+    def _layered_matches(
+        self, markers: str | tuple[str, ...], suffixes: str | tuple[str, ...]
+    ):
         """Yield (name, bytes) for matching files, in pak load order.
 
         Every pak's own copy is yielded — including files a later patch
@@ -276,10 +318,23 @@ class Game:
         localization) layer definitions rather than shadowing whole
         files; a patch's ``Weapon.txt`` carries only the changed entries.
         """
+        if isinstance(markers, str):
+            markers = (markers,)
         if isinstance(suffixes, str):
             suffixes = (suffixes,)
         for reader in self._paks:
             for entry in reader:
                 lowered = entry.name.lower()
-                if marker in lowered and lowered.endswith(suffixes):
+                if lowered.endswith(suffixes) and any(m in lowered for m in markers):
                     yield entry.name, reader.read(entry)
+
+
+def _level_from_path(name: str) -> str:
+    """``Mods/X/Globals/FJ_FortJoy_Main/Items/…`` → ``FJ_FortJoy_Main``."""
+    parts = name.split("/")
+    for anchor in ("Levels", "Globals"):
+        if anchor in parts:
+            index = parts.index(anchor)
+            if index + 1 < len(parts):
+                return parts[index + 1]
+    return ""

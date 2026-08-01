@@ -51,6 +51,7 @@ Early scaffold. What works today:
 | Game index | `Game` object over all paks with patch layering: root templates by UUID/name/stats, stats with inheritance, localization |
 | Lookup | `dos2forge lookup <name-or-UUID-or-handle>` with cross-references |
 | Template export | `dos2forge templates` → JSON of every MapKey UUID, name, display name, stats id |
+| Level instances | `dos2forge instances` → unique items/NPCs placed in levels, with their base template and level |
 
 On the roadmap (following bg3-forge's architecture): typed dataset models
 (items, skills, statuses), more exporters (CSV/SQLite), and mod authoring

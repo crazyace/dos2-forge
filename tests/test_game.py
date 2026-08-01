@@ -77,7 +77,33 @@ def game_dir(tmp_path):
         b'new entry "WPN_Sword_1H"\nusing "WPN_Sword_1H"\ndata "Damage Range" "6"\n',
     )
     patch.write(tmp_path / "Patch2.pak")
+
+    # A level-instance file: a unique ring placed in Fort Joy that
+    # references the generic ring template and overrides its name.
+    shared_globals = PakWriter(compression=CompressionMethod.LZ4)
+    ring_node = _template_node(
+        "0000f00d-0000-4000-8000-00000000cafe",
+        "S_FTJ_MigoRing",
+        "hffffffffg0000g0000g0000g0000000000ff",
+        "",
+        type_="",
+    )
+    ring_node.attributes["TemplateName"] = LsxAttribute(
+        id="TemplateName", type="FixedString", value=RING_KEY
+    )
+    ring_node.attributes["LevelName"] = LsxAttribute(
+        id="LevelName", type="FixedString", value="FJ_FortJoy_Main"
+    )
+    shared_globals.add(
+        "Mods/Shared/Globals/FJ_FortJoy_Main/Items/_merged.lsf",
+        _templates_lsf(ring_node),
+    )
+    shared_globals.write(tmp_path / "Origins.pak")
     return tmp_path
+
+
+RING_INSTANCE_KEY = "0000f00d-0000-4000-8000-00000000cafe"
+RING_INSTANCE_HANDLE = "hffffffffg0000g0000g0000g0000000000ff"
 
 
 def test_patch_template_shadows_base(game_dir):
@@ -183,6 +209,39 @@ def test_lookup_searches_localization_text(game_dir):
     with Game(data_dir=game_dir) as game:
         result = lookup(game, "migo's journal")
         assert any("h7g7g7g7g7" in s for s in result.suggestions)
+
+
+def test_level_instances_are_indexed(game_dir):
+    loc_dir = game_dir / "Localization"
+    loc_dir.mkdir()
+    english = PakWriter()
+    english.add(
+        "Localization/english.xml",
+        write_localization(
+            [
+                LocalizationEntry(
+                    handle=RING_INSTANCE_HANDLE, version=1, text="Migo's Ring"
+                )
+            ]
+        ),
+    )
+    english.write(loc_dir / "English.pak")
+    with Game(data_dir=game_dir) as game:
+        instance = game.level_instances.by_map_key[RING_INSTANCE_KEY]
+        assert instance.type == "item instance"
+        assert instance.level == "FJ_FortJoy_Main"
+        assert instance.parent_template == RING_KEY
+        assert instance.display_name == "Migo's Ring"
+
+        # Fuzzy search by the localized name now reaches the instance.
+        result = lookup(game, "migo's ring")
+        assert any(RING_INSTANCE_KEY in s for s in result.suggestions)
+
+        # Direct UUID lookup shows the instance with its base template.
+        report = format_report(lookup(game, RING_INSTANCE_KEY))
+        assert "instance " + RING_INSTANCE_KEY in report
+        assert "base template: " + RING_KEY in report
+        assert "base name: LOOT_Migo_Ring" in report
 
 
 def test_lookup_falls_back_to_suggestions(game_dir):

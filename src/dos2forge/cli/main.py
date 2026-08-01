@@ -80,6 +80,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     templates_cmd.add_argument("-o", "--output", type=Path, default=Path("templates.json"))
 
+    instances_cmd = sub.add_parser(
+        "instances",
+        help="export level/global item and character instances (unique items live here) as JSON",
+    )
+    instances_cmd.add_argument("-o", "--output", type=Path, default=Path("instances.json"))
+
     sub.add_parser("doctor", help="diagnose the installation and environment")
     return parser
 
@@ -201,12 +207,15 @@ def _dispatch(args) -> int:
             print(format_report(result))
         return 0 if (result.found or result.suggestions) else 1
 
-    if args.command == "templates":
+    if args.command in ("templates", "instances"):
         import json
 
         from ..game import Game
 
         with Game(path=args.game_path, data_dir=args.data_dir) as game:
+            index = (
+                game.templates if args.command == "templates" else game.level_instances
+            )
             records = [
                 {
                     "map_key": t.map_key,
@@ -214,19 +223,18 @@ def _dispatch(args) -> int:
                     "display_name": t.display_name,
                     "handle": t.handle,
                     "type": t.type,
+                    "level": t.level,
                     "stats": t.stats,
                     "icon": t.icon,
                     "parent_template": t.parent_template,
                     "source": t.source,
                 }
-                for t in sorted(
-                    game.templates.by_map_key.values(), key=lambda t: t.map_key
-                )
+                for t in sorted(index.by_map_key.values(), key=lambda t: t.map_key)
             ]
             args.output.write_text(
                 json.dumps(records, indent=1, ensure_ascii=False) + "\n", "utf-8"
             )
-            print(f"wrote {len(records)} templates to {args.output}")
+            print(f"wrote {len(records)} {args.command} to {args.output}")
             for issue in game.load_issues:
                 print(f"warning: {issue.file}: {issue.error}", file=sys.stderr)
         return 0
