@@ -71,6 +71,22 @@ def test_unmodeled_blocks_are_tolerated():
     assert [e.name for e in entries] == ["_BaseWeapon", "WPN_Sword_1H"]
 
 
+def test_mixed_case_block_kinds_are_tolerated():
+    # Retail DOS2 grammar: block kinds are not all-lowercase, and their
+    # type/data lines belong to the (unmodeled, discarded) block rather
+    # than being orphans.  Seen in CraftingStationsItemComboPreviewData.txt.
+    text = (
+        'new CraftingStationsItemComboPreviewData "AB_Combo"\n'
+        'type "Object"\n'
+        'data "Icon" "some_icon"\n'
+        'new DeltaMod "Boost_Weapon"\n'
+        'data "Boost" "_Boost_Weapon_Damage"\n'
+        "\n" + WEAPON_TXT
+    )
+    entries = parse_stats(text)
+    assert [e.name for e in entries] == ["_BaseWeapon", "WPN_Sword_1H"]
+
+
 def test_malformed_structural_line_is_rejected():
     with pytest.raises(StatsParseError, match="malformed"):
         parse_stats('new entry "A"\ndata "Key" trailing junk\n')

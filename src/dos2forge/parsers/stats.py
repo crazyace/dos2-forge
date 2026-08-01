@@ -30,7 +30,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator
 
-_LINE_RE = re.compile(r'^(?P<keyword>[a-z ]+?)\s+"(?P<args>.*)"\s*$')
+# Keywords are not all-lowercase: DOS2 block kinds include mixed-case
+# names like ``new CraftingStationsItemComboPreviewData`` and
+# ``new DeltaMod`` alongside the lowercase ``new entry``/``data`` lines.
+_LINE_RE = re.compile(r'^(?P<keyword>[A-Za-z ]+?)\s+"(?P<args>.*)"\s*$')
 # Argument separators: `"a" "b"` (data lines) and `"a","b"` (key lines).
 _ARG_SPLIT_RE = re.compile(r'"\s*,\s*"|"\s+"')
 # Line shapes we model.  A line starting with one of these that then
