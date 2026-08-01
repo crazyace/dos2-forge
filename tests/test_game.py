@@ -168,6 +168,23 @@ def test_stats_lookup_prints_shared_stats_once(game_dir):
     assert "template " + SWORD_KEY in report
 
 
+def test_lookup_searches_localization_text(game_dir):
+    loc_dir = game_dir / "Localization"
+    loc_dir.mkdir()
+    english = PakWriter()
+    english.add(
+        "Localization/english.xml",
+        write_localization(
+            # A string no template or stats entry references at all.
+            [LocalizationEntry(handle="h7g7g7g7g7", version=1, text="Migo’s Journal")]
+        ),
+    )
+    english.write(loc_dir / "English.pak")
+    with Game(data_dir=game_dir) as game:
+        result = lookup(game, "migo's journal")
+        assert any("h7g7g7g7g7" in s for s in result.suggestions)
+
+
 def test_lookup_falls_back_to_suggestions(game_dir):
     with Game(data_dir=game_dir) as game:
         result = lookup(game, "migo")

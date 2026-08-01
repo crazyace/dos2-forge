@@ -90,6 +90,16 @@ def lookup(game: Game, query: str) -> LookupResult:
                 seen.add(label)
                 result.suggestions.append(label)
             if len(result.suggestions) >= _MAX_SUGGESTIONS:
+                return result
+    # Localization text: finds strings nothing in the template/stats
+    # indexes references (level-instance names, dialog, journal text).
+    for handle, text in game.localization:
+        if needle in _fold(text):
+            label = f"{handle}  (text: {text})"
+            if label not in seen:
+                seen.add(label)
+                result.suggestions.append(label)
+            if len(result.suggestions) >= _MAX_SUGGESTIONS:
                 break
     return result
 
