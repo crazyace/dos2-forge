@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# dos2forge working artifacts
+extracted/
+export/
+.dos2forge-paks.json
+.dos2forge-manifest.json

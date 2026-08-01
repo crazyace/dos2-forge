@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dos2forge"
+version = "0.1.0"
+description = "Data, inspection, and mod-authoring toolkit for Divinity: Original Sin 2"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "DOS2 Forge contributors" }]
+keywords = ["divinity-original-sin-2", "dos2", "modding", "game-data", "pak", "larian"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Libraries",
+]
+# The core library is dependency-free: LZ4 and zlib decompression are
+# built in.  Optional extras speed things up.
+dependencies = []
+
+[project.optional-dependencies]
+lz4 = ["lz4>=4.0"]           # native-speed LZ4 (recommended for full unpacks)
+all = ["lz4>=4.0"]
+dev = ["pytest>=7.0", "coverage[toml]>=7.0", "lz4>=4.0"]
+
+[project.scripts]
+dos2forge = "dos2forge.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/crazyace/dos2-forge"
+Documentation = "https://github.com/crazyace/dos2-forge#readme"
+Issues = "https://github.com/crazyace/dos2-forge/issues"
+Changelog = "https://github.com/crazyace/dos2-forge/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Ship the PEP 561 marker so type checkers pick up dos2forge's annotations
+# in consuming projects.
+dos2forge = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/dos2forge"]
+
+[tool.coverage.report]
+show_missing = true
