@@ -225,12 +225,15 @@ class PakReader:
         if len(frame) != frame_end:
             raise PakError("truncated solid archive")
         try:
+            # Retail solid frames carry no EndMark: the blocks run right
+            # up to the file list and simply stop (allow_truncated); the
+            # exact-size check below is the integrity guarantee instead.
             self._solid_frame = lz4compat.decompress_frame(
-                frame, max_output_size=total_uncompressed
+                frame, max_output_size=total_uncompressed, allow_truncated=True
             )
         except (lz4compat.LZ4Error, lz4compat.DecompressionBombError) as exc:
             raise PakError(f"corrupt solid archive: {exc}") from exc
-        if len(self._solid_frame) < total_uncompressed:
+        if len(self._solid_frame) != total_uncompressed:
             raise PakError(
                 f"solid archive decompressed to {len(self._solid_frame)} bytes, "
                 f"expected {total_uncompressed}"

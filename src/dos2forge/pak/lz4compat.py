@@ -103,7 +103,11 @@ def compress(data: bytes) -> bytes:
     return _py_compress_literals(data)
 
 
-def decompress_frame(data: bytes, max_output_size: int | None = None) -> bytes:
+def decompress_frame(
+    data: bytes,
+    max_output_size: int | None = None,
+    allow_truncated: bool = False,
+) -> bytes:
     """Decompress LZ4 *frame* format data (possibly concatenated frames).
 
     When ``max_output_size`` is given, decoding is bounded to that many
@@ -111,6 +115,12 @@ def decompress_frame(data: bytes, max_output_size: int | None = None) -> bytes:
     unbounded allocation; exceeding it raises
     :class:`DecompressionBombError`.  Raises :class:`LZ4Error` for corrupt
     input, with either backend.
+
+    ``allow_truncated`` accepts a frame whose input ends cleanly at a
+    block boundary without an EndMark.  DOS2 DE's solid archives are
+    written that way: frame header plus blocks, terminated only by the
+    file list that follows (callers there know the expected output size
+    and verify it).
     """
     if _lz4block is not None:
         import lz4.frame
@@ -133,10 +143,14 @@ def decompress_frame(data: bytes, max_output_size: int | None = None) -> bytes:
                     f"LZ4 frame output exceeds bound {max_output_size}"
                 )
             if not decoder.eof:
+                # The decoder consumed every input byte without reaching an
+                # EndMark (output overflow was ruled out above).
+                if allow_truncated:
+                    break
                 raise LZ4Error("truncated LZ4 frame")
             remaining = decoder.unused_data or b""
         return bytes(out)
-    return _py_decompress_frame(data, max_output_size)
+    return _py_decompress_frame(data, max_output_size, allow_truncated)
 
 
 def compress_frame(data: bytes) -> bytes:
@@ -156,7 +170,11 @@ _SKIPPABLE_MIN = 0x184D2A50
 _SKIPPABLE_MAX = 0x184D2A5F
 
 
-def _py_decompress_frame(src: bytes, max_output_size: int | None = None) -> bytes:
+def _py_decompress_frame(
+    src: bytes,
+    max_output_size: int | None = None,
+    allow_truncated: bool = False,
+) -> bytes:
     out = bytearray()
     i = 0
     try:
@@ -174,12 +192,22 @@ def _py_decompress_frame(src: bytes, max_output_size: int | None = None) -> byte
             if flg >> 6 != 0b01:
                 raise LZ4Error("unsupported LZ4 frame version")
             block_checksum = bool(flg & 0x10)
+            # Without the block-independence bit, matches may reference
+            # the output of earlier blocks in the frame (retail solid
+            # archives are written this way).
+            independent_blocks = bool(flg & 0x20)
             if flg & 0x08:  # content size present
                 i += 8
             if flg & 0x01:  # dictionary id present
                 i += 4
             i += 1  # header checksum (not verified)
             while True:
+                if i >= len(src):
+                    # Input ends at a block boundary without an EndMark —
+                    # how DOS2 DE solid archives terminate their frame.
+                    if allow_truncated:
+                        break
+                    raise LZ4Error("truncated LZ4 frame")
                 block_size = int.from_bytes(src[i : i + 4], "little")
                 i += 4
                 if block_size == 0:  # EndMark
@@ -190,7 +218,11 @@ def _py_decompress_frame(src: bytes, max_output_size: int | None = None) -> byte
                 if len(block) != block_size:
                     raise LZ4Error("truncated LZ4 frame block")
                 i += block_size
-                out += block if is_uncompressed else _py_decompress(block, None)
+                if is_uncompressed:
+                    out += block
+                else:
+                    min_match_start = len(out) if independent_blocks else 0
+                    _py_decompress_block(out, block, min_match_start, max_output_size)
                 if max_output_size is not None and len(out) > max_output_size:
                     raise DecompressionBombError(
                         f"LZ4 frame output exceeds bound {max_output_size}"
@@ -206,6 +238,23 @@ def _py_decompress_frame(src: bytes, max_output_size: int | None = None) -> byte
 
 def _py_decompress(src: bytes, uncompressed_size: int | None) -> bytes:
     dst = bytearray()
+    _py_decompress_block(dst, src, 0, uncompressed_size)
+    if uncompressed_size is not None and len(dst) != uncompressed_size:
+        raise LZ4Error(
+            f"decompressed size mismatch: got {len(dst)}, expected {uncompressed_size}"
+        )
+    return bytes(dst)
+
+
+def _py_decompress_block(
+    dst: bytearray, src: bytes, min_match_start: int, size_limit: int | None
+) -> None:
+    """Decode one raw LZ4 block, appending to ``dst``.
+
+    ``min_match_start`` is the lowest ``dst`` index a match may copy
+    from: the block's own start for independent blocks, 0 when earlier
+    frame output is a legal reference window (linked blocks).
+    """
     i = 0
     n = len(src)
     try:
@@ -239,20 +288,15 @@ def _py_decompress(src: bytes, uncompressed_size: int | None) -> bytes:
                     if extra != 255:
                         break
             start = len(dst) - offset
-            if start < 0:
+            if start < min_match_start:
                 raise LZ4Error("match offset beyond output start")
-            if uncompressed_size is not None and len(dst) + match_len > uncompressed_size:
+            if size_limit is not None and len(dst) + match_len > size_limit:
                 raise LZ4Error("decompressed output exceeds expected size")
             # Matches may overlap the output being built; copy byte-wise.
             for j in range(match_len):
                 dst.append(dst[start + j])
     except IndexError as exc:
         raise LZ4Error("truncated LZ4 block") from exc
-    if uncompressed_size is not None and len(dst) != uncompressed_size:
-        raise LZ4Error(
-            f"decompressed size mismatch: got {len(dst)}, expected {uncompressed_size}"
-        )
-    return bytes(dst)
 
 
 def _py_compress_literals(data: bytes) -> bytes:

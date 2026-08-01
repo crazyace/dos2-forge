@@ -240,10 +240,15 @@ class PakEntry:
 
     @property
     def size(self) -> int:
-        """Decompressed size of the file."""
-        if self.compression is CompressionMethod.NONE:
-            return self.size_on_disk
-        return self.uncompressed_size
+        """Decompressed size of the file.
+
+        Ordinary uncompressed entries store 0 in ``uncompressed_size``
+        and their real size in ``size_on_disk``.  Solid archives mark
+        every entry method-NONE yet fill in both fields (the frame does
+        the compressing), so a non-zero ``uncompressed_size`` is
+        authoritative regardless of the method nibble.
+        """
+        return self.uncompressed_size or self.size_on_disk
 
     @classmethod
     def parse_all(cls, table: bytes, version: int) -> list["PakEntry"]:

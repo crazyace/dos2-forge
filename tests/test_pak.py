@@ -122,7 +122,10 @@ def test_extractor_rejects_escaping_paths(make_pak, tmp_path):
 
 
 def _write_solid_pak(path, files):
-    """Assemble a v13 solid archive: one LZ4 frame over all file data."""
+    """Assemble a v13 solid archive the way DE retail data is laid out:
+    one LZ4 frame over all file data, no EndMark (the blocks run right up
+    to the file list), and method-NONE entries with both sizes filled in.
+    """
     lz4frame = pytest.importorskip("lz4.frame")
     compressor = lz4frame.LZ4FrameCompressor(auto_flush=True)
     frame = bytearray(compressor.begin())
@@ -134,13 +137,13 @@ def _write_solid_pak(path, files):
         entries.append(
             PakEntry(
                 name=name, offset=offset, archive_part=0,
-                flags=int(CompressionMethod.LZ4),
+                flags=int(CompressionMethod.NONE),
                 size_on_disk=len(span), uncompressed_size=len(data),
             )
         )
         frame += span
         offset += len(span)
-    frame += compressor.flush()
+    # No compressor.flush(): retail frames carry no EndMark.
 
     table = b"".join(e.pack10() for e in entries)
     file_list = len(entries).to_bytes(4, "little") + lz4compat.compress(table)
@@ -167,6 +170,28 @@ def test_solid_archive(tmp_path):
         assert pak.header.solid
         for name, data in files.items():
             assert pak.read(name) == data
+            # Solid entries are method-NONE but their uncompressed_size
+            # is authoritative; size must not fall back to the span size.
+            assert pak.entry(name).size == len(data)
+
+
+def test_pure_decoder_handles_linked_blocks_without_endmark():
+    # Retail solid frames set FLG 0x40: linked blocks (matches may reach
+    # into the previous block's output) and no EndMark.  Exercised
+    # directly so it runs regardless of native lz4 being installed.
+    literals = b"abcdefgh"
+    block1 = bytes([len(literals) << 4]) + literals
+    block2 = b"\x04\x08\x00"  # 0 literals, match: offset 8, length 8
+    frame = (
+        (0x184D2204).to_bytes(4, "little")
+        + b"\x40\x40\x00"  # FLG (v1, linked), BD, header checksum (unverified)
+        + len(block1).to_bytes(4, "little") + block1
+        + len(block2).to_bytes(4, "little") + block2
+    )
+    out = lz4compat._py_decompress_frame(frame, allow_truncated=True)
+    assert out == literals * 2
+    with pytest.raises(lz4compat.LZ4Error, match="truncated"):
+        lz4compat._py_decompress_frame(frame, allow_truncated=False)
 
 
 def test_solid_archive_with_gap_is_rejected(tmp_path):
