@@ -16,9 +16,11 @@ lazily on first use and indexed for lookup.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from functools import cached_property
 from pathlib import Path
+
+from . import cache as _cache
 
 from .locate import find_data_dir, find_game
 from .pak.format import PakEntry
@@ -26,7 +28,7 @@ from .pak.reader import PakError, PakReader, file_is_lspk
 from .parsers.localization import Localization, LocalizationError, parse_localization
 from .parsers.lsx import LsxNode
 from .parsers.resource import parse_resource
-from .parsers.stats import StatsCollection, StatsParseError
+from .parsers.stats import StatsCollection, StatsEntry, StatsParseError
 
 
 class GameNotFoundError(RuntimeError):
@@ -109,6 +111,7 @@ class Game:
         path: str | Path | None = None,
         data_dir: str | Path | None = None,
         language: str = "English",
+        use_cache: bool = True,
     ):
         if data_dir is None:
             root = find_game(path)
@@ -121,6 +124,9 @@ class Game:
         self.data_dir = Path(data_dir)
         self.language = language
         self.load_issues: list[LoadIssue] = []
+        self._cache_key = (
+            _cache.data_fingerprint(self.data_dir, language) if use_cache else None
+        )
 
         with_priority: list[tuple[Path, PakReader]] = []
         for pak_path in sorted(self.data_dir.glob("*.pak")):
@@ -190,6 +196,13 @@ class Game:
     @cached_property
     def stats(self) -> StatsCollection:
         """Every ``Stats/Generated/Data`` entry across all paks, in load order."""
+        cached = self._cache_load("stats")
+        if cached is not None:
+            collection = StatsCollection()
+            for record in cached["entries"]:
+                collection.add(StatsEntry(**record))
+            collection.globals.update(cached["globals"])
+            return collection
         collection = StatsCollection()
         for name, data in self._layered_matches("/stats/generated/data/", ".txt"):
             try:
@@ -198,11 +211,25 @@ class Game:
                 )
             except StatsParseError as exc:
                 self.load_issues.append(LoadIssue(name, str(exc)))
+        # Per-name layer order is what resolution depends on; replaying
+        # this flat list through add() reproduces it exactly.
+        records = [
+            asdict(entry)
+            for layers in collection._layers.values()
+            for entry in layers
+        ]
+        self._cache_save("stats", {"globals": collection.globals, "entries": records})
         return collection
 
     @cached_property
     def localization(self) -> Localization:
         """Handle → text for the configured language."""
+        cached = self._cache_load("localization")
+        if cached is not None:
+            table = Localization()
+            table._texts = cached["texts"]
+            table._versions = cached["versions"]
+            return table
         table = Localization()
         marker = f"localization/{self.language.lower()}"
 
@@ -230,11 +257,18 @@ class Game:
         for name, data in self._layered_matches("localization/", ".xml"):
             if marker in name.lower():
                 load(name, data)
+        self._cache_save(
+            "localization",
+            {"texts": table._texts, "versions": table._versions},
+        )
         return table
 
     @cached_property
     def templates(self) -> RootTemplateIndex:
         """Every root template (``GameObjects`` node) across all paks."""
+        cached = self._cache_load("templates")
+        if cached is not None:
+            return _index_from_records(cached)
         index = RootTemplateIndex()
         localization = self.localization
         for name, data in self._layered_matches("/roottemplates/", (".lsf", ".lsx")):
@@ -247,6 +281,9 @@ class Game:
                 template = self._template_from_node(node, name, localization)
                 if template is not None:
                     index.add(template)
+        self._cache_save(
+            "templates", [asdict(t) for t in index.by_map_key.values()]
+        )
         return index
 
     @cached_property
@@ -257,6 +294,9 @@ class Game:
         instance references its base template (``TemplateName``) and
         overrides fields like the display name.
         """
+        cached = self._cache_load("instances")
+        if cached is not None:
+            return _index_from_records(cached)
         index = RootTemplateIndex()
         localization = self.localization
         for name, data in self._layered_matches(
@@ -282,7 +322,19 @@ class Game:
                     instance.type = kind
                 instance.level = node.get("LevelName", "") or _level_from_path(name)
                 index.add(instance)
+        self._cache_save(
+            "instances", [asdict(t) for t in index.by_map_key.values()]
+        )
         return index
+
+    def _cache_load(self, dataset: str):
+        if self._cache_key is None:
+            return None
+        return _cache.load(self._cache_key, dataset)
+
+    def _cache_save(self, dataset: str, payload) -> None:
+        if self._cache_key is not None:
+            _cache.save(self._cache_key, dataset, payload)
 
     def _template_from_node(
         self, node: LsxNode, source: str, localization: Localization
@@ -327,6 +379,13 @@ class Game:
                 lowered = entry.name.lower()
                 if lowered.endswith(suffixes) and any(m in lowered for m in markers):
                     yield entry.name, reader.read(entry)
+
+
+def _index_from_records(records) -> RootTemplateIndex:
+    index = RootTemplateIndex()
+    for record in records:
+        index.add(RootTemplate(**record))
+    return index
 
 
 def _level_from_path(name: str) -> str:

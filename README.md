@@ -74,6 +74,35 @@ $ dos2forge convert extracted/.../GlobalSwitches.lsf switches.lsx
 `unpack` keeps a manifest of extracted file checksums, so re-running after
 a game patch only rewrites files whose archived bytes actually changed.
 
+The first `lookup`/`templates`/`instances` run parses the whole install
+(minutes); the parsed indexes are then cached on disk, keyed by every
+pak's size and mtime, so later runs are near-instant and any game patch
+invalidates automatically. `dos2forge cache` shows the location/size,
+`dos2forge cache clear` empties it, `--no-cache` bypasses it.
+
+## Publish a reference site
+
+The exports can become a public, searchable UUID reference (the site
+that didn't exist when this project started):
+
+```console
+$ dos2forge templates -o templates.json
+$ dos2forge instances -o instances.json
+$ python scripts/build_site.py templates.json instances.json -o site
+$ git add site && git commit -m "reference site data" && git push
+```
+
+Enable **Pages → Source: GitHub Actions** once in the repository
+settings; the `Publish reference site` workflow then deploys `site/` on
+every push that touches it. The page is self-contained (no external
+assets) with client-side search over all templates and every named level
+instance.
+
+Note: the published data is derived from Larian's game files (names and
+display text included). Review [Larian's fan content
+guidelines](https://larian.com) before publishing, and take the site
+down if they ask.
+
 ## Python API
 
 ```python

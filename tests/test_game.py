@@ -258,6 +258,42 @@ def test_read_prefers_patch_copy(game_dir):
         assert b'using "WPN_Sword_1H"' in data  # the patch's delta file
 
 
+def test_cache_round_trip_and_invalidation(game_dir, tmp_path, monkeypatch):
+    monkeypatch.setenv("DOS2FORGE_CACHE", str(tmp_path / "cache"))
+    with Game(data_dir=game_dir) as game:
+        first_templates = len(game.templates)
+        first_resolved = game.stats.resolved("WPN_Sword_1H")
+        assert len(game.level_instances) == 1
+    cache_files = sorted(p.name for p in (tmp_path / "cache").rglob("*.json.gz"))
+    assert cache_files == [
+        "instances.json.gz", "localization.json.gz",
+        "stats.json.gz", "templates.json.gz",
+    ]
+
+    # A fresh Game must serve identical data from the cache.
+    with Game(data_dir=game_dir) as game:
+        assert len(game.templates) == first_templates
+        assert game.templates.by_map_key[SWORD_KEY].name == "WPN_Sword_1H_B"
+        assert game.stats.resolved("WPN_Sword_1H") == first_resolved
+        assert game.level_instances.by_map_key[RING_INSTANCE_KEY].level == "FJ_FortJoy_Main"
+
+    # Touching a pak invalidates: a new cache key directory appears.
+    pak = game_dir / "Patch2.pak"
+    pak.write_bytes(pak.read_bytes() + b"\x00")
+    keys_before = {p.name for p in (tmp_path / "cache").iterdir()}
+    with Game(data_dir=game_dir) as game:
+        assert len(game.templates) == first_templates  # rebuilt, then re-cached
+    keys_after = {p.name for p in (tmp_path / "cache").iterdir()}
+    assert keys_before < keys_after
+
+
+def test_cache_can_be_disabled(game_dir, tmp_path, monkeypatch):
+    monkeypatch.setenv("DOS2FORGE_CACHE", str(tmp_path / "cache"))
+    with Game(data_dir=game_dir, use_cache=False) as game:
+        assert len(game.templates) == 2
+    assert not (tmp_path / "cache").exists()
+
+
 def test_cli_lookup_and_templates_export(game_dir, tmp_path, capsys):
     assert main(["--data-dir", str(game_dir), "lookup", "WPN_Sword_1H"]) == 0
     assert "Damage Range: 6" in capsys.readouterr().out

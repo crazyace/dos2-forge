@@ -32,6 +32,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--data-dir", type=Path, help="directory containing .pak archives directly"
     )
+    parser.add_argument(
+        "--no-cache", action="store_true",
+        help="ignore and don't write the parsed-index disk cache",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     listing = sub.add_parser("list", help="list the contents of a .pak archive")
@@ -85,6 +89,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="export level/global item and character instances (unique items live here) as JSON",
     )
     instances_cmd.add_argument("-o", "--output", type=Path, default=Path("instances.json"))
+
+    cache_cmd = sub.add_parser("cache", help="show or clear the parsed-index disk cache")
+    cache_cmd.add_argument("action", nargs="?", choices=("info", "clear"), default="info")
 
     sub.add_parser("doctor", help="diagnose the installation and environment")
     return parser
@@ -198,11 +205,23 @@ def _dispatch(args) -> int:
         print(f"converted {args.input} -> {args.output}")
         return 0
 
+    if args.command == "cache":
+        from .. import cache
+
+        if args.action == "clear":
+            print(f"cleared {cache.clear()} cache entrie(s) from {cache.cache_root()}")
+        else:
+            print(f"location: {cache.cache_root()}")
+            print(f"size:     {cache.size_bytes() / 1e6:.1f} MB")
+        return 0
+
     if args.command == "lookup":
         from ..game import Game
         from ..lookup import format_report, lookup
 
-        with Game(path=args.game_path, data_dir=args.data_dir) as game:
+        with Game(
+            path=args.game_path, data_dir=args.data_dir, use_cache=not args.no_cache
+        ) as game:
             result = lookup(game, " ".join(args.query))
             print(format_report(result))
         return 0 if (result.found or result.suggestions) else 1
@@ -212,7 +231,9 @@ def _dispatch(args) -> int:
 
         from ..game import Game
 
-        with Game(path=args.game_path, data_dir=args.data_dir) as game:
+        with Game(
+            path=args.game_path, data_dir=args.data_dir, use_cache=not args.no_cache
+        ) as game:
             index = (
                 game.templates if args.command == "templates" else game.level_instances
             )
