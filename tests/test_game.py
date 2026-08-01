@@ -122,6 +122,34 @@ def test_lookup_by_uuid_stats_name_and_handle(game_dir):
         assert "Iron Sword" in format_report(by_handle)
 
 
+def test_language_pak_under_localization_dir(game_dir):
+    # DE ships text as Data/Localization/<Language>.pak whose XML paths
+    # do not necessarily mention the language; a pak named for the
+    # language contributes wholesale.
+    ring_handle = "h9g9g9g9g9"
+    loc_dir = game_dir / "Localization"
+    loc_dir.mkdir()
+    english = PakWriter()
+    english.add(
+        "Localization/english.xml",
+        write_localization(
+            [LocalizationEntry(handle=ring_handle, version=1, text="Migo's Ring")]
+        ),
+    )
+    english.write(loc_dir / "English.pak")
+    with Game(data_dir=game_dir) as game:
+        assert game.templates.by_map_key[RING_KEY].display_name == "Migo's Ring"
+        result = lookup(game, "migo's ring")
+        assert any(RING_KEY in s for s in result.suggestions)
+
+
+def test_stats_lookup_prints_shared_stats_once(game_dir):
+    with Game(data_dir=game_dir) as game:
+        report = format_report(lookup(game, "WPN_Sword_1H"))
+    assert report.count("stats entry WPN_Sword_1H") == 1
+    assert "template " + SWORD_KEY in report
+
+
 def test_lookup_falls_back_to_suggestions(game_dir):
     with Game(data_dir=game_dir) as game:
         result = lookup(game, "migo")

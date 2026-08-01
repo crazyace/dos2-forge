@@ -132,6 +132,19 @@ class Game:
         )
         self._paks = [reader for _, reader in with_priority]
 
+        # DE keeps its text in separate archives under Data/Localization
+        # (English.pak, French.pak, …), outside the main pak scan.
+        self._localization_paks: list[PakReader] = []
+        localization_dir = self.data_dir / "Localization"
+        if localization_dir.is_dir():
+            for pak_path in sorted(localization_dir.rglob("*.pak")):
+                if not file_is_lspk(pak_path):
+                    continue
+                try:
+                    self._localization_paks.append(PakReader(pak_path))
+                except PakError as exc:
+                    self.load_issues.append(LoadIssue(pak_path.name, str(exc)))
+
         # name -> providing reader, later paks shadowing earlier ones.
         self._files: dict[str, tuple[PakReader, PakEntry]] = {}
         for reader in self._paks:
@@ -160,7 +173,7 @@ class Game:
         return reader.read(entry)
 
     def close(self) -> None:
-        for reader in self._paks:
+        for reader in self._paks + self._localization_paks:
             reader.close()
 
     def __enter__(self) -> "Game":
@@ -189,14 +202,31 @@ class Game:
         """Handle → text for the configured language."""
         table = Localization()
         marker = f"localization/{self.language.lower()}"
-        for name, data in self._layered_matches("localization/", ".xml"):
-            if marker not in name.lower():
-                continue
+
+        def load(name: str, data: bytes) -> None:
             try:
                 for entry in parse_localization(data):
                     table.add(entry)
             except LocalizationError as exc:
                 self.load_issues.append(LoadIssue(name, str(exc)))
+
+        # Dedicated language archives (Data/Localization/English.pak):
+        # a pak named for the language contributes all its XML; others
+        # only entries whose archived path names the language.
+        language = self.language.lower()
+        for reader in self._localization_paks:
+            whole_pak = language in str(reader.path).lower()
+            for entry in reader:
+                lowered = entry.name.lower()
+                if not lowered.endswith(".xml"):
+                    continue
+                if whole_pak or language in lowered:
+                    load(entry.name, reader.read(entry))
+
+        # Language files shipped inside the main content paks.
+        for name, data in self._layered_matches("localization/", ".xml"):
+            if marker in name.lower():
+                load(name, data)
         return table
 
     @cached_property

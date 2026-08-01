@@ -50,9 +50,13 @@ def lookup(game: Game, query: str) -> LookupResult:
         return result
 
     if query in game.stats:
+        # The shared stats block prints once; the templates that use it
+        # follow without repeating it.
         result.sections.append(_stats_section(game, query))
         for template in game.templates.by_stats.get(query, ()):
-            result.sections.append(_template_section(game, template))
+            result.sections.append(
+                _template_section(game, template, include_stats=False)
+            )
         return result
 
     for template in game.templates.by_name.get(query.lower(), ()):
@@ -83,7 +87,9 @@ def lookup(game: Game, query: str) -> LookupResult:
     return result
 
 
-def _template_section(game: Game, template: RootTemplate) -> str:
+def _template_section(
+    game: Game, template: RootTemplate, include_stats: bool = True
+) -> str:
     lines = [f"template {template.map_key}"]
     for label, value in (
         ("name", template.name),
@@ -97,7 +103,7 @@ def _template_section(game: Game, template: RootTemplate) -> str:
     ):
         if value:
             lines.append(f"  {label}: {value}")
-    if template.stats and template.stats in game.stats:
+    if include_stats and template.stats and template.stats in game.stats:
         lines.append("")
         lines.append(_stats_section(game, template.stats, indent="  "))
     return "\n".join(lines)

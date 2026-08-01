@@ -45,14 +45,18 @@ def run_doctor(
     )
     if resolved_data is None:
         return report
-    for pak_path in sorted(resolved_data.glob("*.pak")):
+    pak_paths = sorted(resolved_data.glob("*.pak"))
+    localization_dir = resolved_data / "Localization"
+    if localization_dir.is_dir():
+        pak_paths += sorted(localization_dir.rglob("*.pak"))
+    for pak_path in pak_paths:
         if not file_is_lspk(pak_path):
             continue  # secondary parts (Textures_1.pak) carry no header
         try:
             with PakReader(pak_path) as pak:
                 report.paks.append(
                     PakInfo(
-                        name=pak_path.name,
+                        name=str(pak_path.relative_to(resolved_data)),
                         version=pak.header.version,
                         entries=len(pak),
                         solid=pak.header.solid,
@@ -60,8 +64,8 @@ def run_doctor(
                 )
         except PakError as exc:
             report.paks.append(
-                PakInfo(name=pak_path.name, version=0, entries=0,
-                        solid=False, error=str(exc))
+                PakInfo(name=str(pak_path.relative_to(resolved_data)),
+                        version=0, entries=0, solid=False, error=str(exc))
             )
     return report
 
