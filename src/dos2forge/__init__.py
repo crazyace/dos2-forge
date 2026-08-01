@@ -10,11 +10,16 @@ reusable modules.
         doc = parse_resource(pak.read("Public/Shared/RootTemplates/..."))
 """
 
+from .game import Game, GameNotFoundError, LoadIssue, RootTemplate
 from .locate import find_data_dir, find_game
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "Game",
+    "GameNotFoundError",
+    "LoadIssue",
+    "RootTemplate",
     "find_data_dir",
     "find_game",
     "__version__",

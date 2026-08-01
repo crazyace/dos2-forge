@@ -28,10 +28,11 @@ gets them out:
 
 ```console
 $ pip install dos2forge
-$ dos2forge doctor                        # find the install, inventory the paks
-$ dos2forge search "*/RootTemplates/*"    # where do the templates live?
+$ dos2forge doctor                 # find the install, inventory the paks
+$ dos2forge lookup "WPN_Sword_1H"  # template + stats + display name, cross-referenced
+$ dos2forge lookup 123e4567-e89b-42d3-a456-426614174000   # by MapKey UUID
+$ dos2forge templates -o templates.json   # every UUID/name/stats id, one JSON file
 $ dos2forge unpack -p "*/Stats/*" -p "*/RootTemplates/*" -p "*/Localization/*"
-$ dos2forge convert extracted/Public/Shared/RootTemplates/Containers.lsf containers.lsx
 ```
 
 ## Status
@@ -47,10 +48,12 @@ Early scaffold. What works today:
 | Stats `.txt` | Parse/write, `using` inheritance resolved across files |
 | Localization | DOS2 XML `contentList` parsing, handle → text lookup |
 | Install discovery | Steam/GOG, `DOS2_PATH` env var, DefEd + classic data dirs |
+| Game index | `Game` object over all paks with patch layering: root templates by UUID/name/stats, stats with inheritance, localization |
+| Lookup | `dos2forge lookup <name-or-UUID-or-handle>` with cross-references |
+| Template export | `dos2forge templates` → JSON of every MapKey UUID, name, display name, stats id |
 
-On the roadmap (following bg3-forge's architecture): a typed `Game` object
-model (items, skills, statuses, root templates with resolved names and
-UUIDs), `lookup`, dataset exporters (JSON/CSV/SQLite), and mod authoring
+On the roadmap (following bg3-forge's architecture): typed dataset models
+(items, skills, statuses), more exporters (CSV/SQLite), and mod authoring
 helpers.
 
 ## Quick start

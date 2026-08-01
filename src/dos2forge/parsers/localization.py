@@ -96,12 +96,16 @@ class Localization:
     def __iter__(self) -> Iterator[tuple[str, str]]:
         return iter(self._texts.items())
 
+    def add(self, entry: LocalizationEntry) -> None:
+        """Add one entry; an equal-or-higher version replaces older text."""
+        key = self._normalize(entry.handle)
+        if entry.version >= self._versions.get(key, -1):
+            self._texts[key] = entry.text
+            self._versions[key] = entry.version
+
     def load_bytes(self, data: bytes | str) -> None:
         for entry in parse_localization(data):
-            key = self._normalize(entry.handle)
-            if entry.version >= self._versions.get(key, -1):
-                self._texts[key] = entry.text
-                self._versions[key] = entry.version
+            self.add(entry)
 
     def load_file(self, path: str | Path) -> None:
         self.load_bytes(Path(path).read_bytes())

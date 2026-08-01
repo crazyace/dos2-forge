@@ -65,6 +65,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="LSF version to write (default: 3, DOS2 DE native)",
     )
 
+    lookup_cmd = sub.add_parser(
+        "lookup",
+        help="resolve a name / UUID / handle to its data and cross-references",
+    )
+    lookup_cmd.add_argument(
+        "query",
+        nargs="+",
+        help="a template or stats name, MapKey UUID, or h... handle (quotes optional)",
+    )
+
+    templates_cmd = sub.add_parser(
+        "templates", help="export the root template index (UUIDs, names, stats) as JSON"
+    )
+    templates_cmd.add_argument("-o", "--output", type=Path, default=Path("templates.json"))
+
     sub.add_parser("doctor", help="diagnose the installation and environment")
     return parser
 
@@ -175,6 +190,45 @@ def _dispatch(args) -> int:
             print(f"error: unsupported output format {suffix!r}", file=sys.stderr)
             return 1
         print(f"converted {args.input} -> {args.output}")
+        return 0
+
+    if args.command == "lookup":
+        from ..game import Game
+        from ..lookup import format_report, lookup
+
+        with Game(path=args.game_path, data_dir=args.data_dir) as game:
+            result = lookup(game, " ".join(args.query))
+            print(format_report(result))
+        return 0 if (result.found or result.suggestions) else 1
+
+    if args.command == "templates":
+        import json
+
+        from ..game import Game
+
+        with Game(path=args.game_path, data_dir=args.data_dir) as game:
+            records = [
+                {
+                    "map_key": t.map_key,
+                    "name": t.name,
+                    "display_name": t.display_name,
+                    "handle": t.handle,
+                    "type": t.type,
+                    "stats": t.stats,
+                    "icon": t.icon,
+                    "parent_template": t.parent_template,
+                    "source": t.source,
+                }
+                for t in sorted(
+                    game.templates.by_map_key.values(), key=lambda t: t.map_key
+                )
+            ]
+            args.output.write_text(
+                json.dumps(records, indent=1, ensure_ascii=False) + "\n", "utf-8"
+            )
+            print(f"wrote {len(records)} templates to {args.output}")
+            for issue in game.load_issues:
+                print(f"warning: {issue.file}: {issue.error}", file=sys.stderr)
         return 0
 
     if args.command == "doctor":

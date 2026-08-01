@@ -22,3 +22,8 @@ and adapted for Divinity: Original Sin 2's older file format generations.
 - Install discovery for Steam/GOG (Definitive Edition and classic data
   directories).
 - CLI: `list`, `unpack`, `cat`, `search`, `convert`, `doctor`.
+- `Game` index over all paks with patch layering (base archives first,
+  `PatchN` numerically after), merging stats/templates/localization
+  layers; `lookup` resolving names, MapKey UUIDs, and localization
+  handles with cross-references; `templates` JSON export of the full
+  root template index.
