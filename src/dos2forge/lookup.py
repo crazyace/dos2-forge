@@ -16,6 +16,13 @@ _HANDLE_RE = re.compile(r"^h[0-9a-f]{1,8}(g[0-9a-f]{1,12}){4}$", re.I)
 _MAX_SUGGESTIONS = 25
 _MAX_STATS_KEYS = 24
 
+#: Game text uses typographic quotes; queries are typed with ASCII ones.
+_QUOTE_FOLD = str.maketrans({"‘": "'", "’": "'", "ʼ": "'"})
+
+
+def _fold(text: str) -> str:
+    return text.lower().translate(_QUOTE_FOLD)
+
 
 @dataclass
 class LookupResult:
@@ -66,10 +73,10 @@ def lookup(game: Game, query: str) -> LookupResult:
 
     # Fuzzy fallback: substring over template names, display names, and
     # stats entry names.
-    needle = query.lower()
+    needle = _fold(query)
     seen: set[str] = set()
     for template in game.templates.by_map_key.values():
-        if needle in template.name.lower() or needle in template.display_name.lower():
+        if needle in _fold(template.name) or needle in _fold(template.display_name):
             label = f"{template.name}  ({template.display_name})  {template.map_key}"
             if label not in seen:
                 seen.add(label)
@@ -77,7 +84,7 @@ def lookup(game: Game, query: str) -> LookupResult:
             if len(result.suggestions) >= _MAX_SUGGESTIONS:
                 return result
     for entry in game.stats:
-        if needle in entry.name.lower():
+        if needle in _fold(entry.name):
             label = f"{entry.name}  (stats: {entry.type or 'entry'})"
             if label not in seen:
                 seen.add(label)
