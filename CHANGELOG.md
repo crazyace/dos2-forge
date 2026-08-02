@@ -22,6 +22,14 @@ and adapted for Divinity: Original Sin 2's older file format generations.
 - Install discovery for Steam/GOG (Definitive Edition and classic data
   directories).
 - CLI: `list`, `unpack`, `cat`, `search`, `convert`, `doctor`.
+- Script Extender mod scaffolding: `dos2forge new` generates the
+  `Mods/<Name_UUID>/` layout ositools loads — meta.lsx (verified against
+  shipping DE mods), `OsiToolsConfig.json`, and bootstrap Lua files.
+- Lua lint: `dos2forge lint` checks SE setup files (FeatureFlags,
+  ModTable, bootstraps), `Ext.Require` targets, Lua block balance and
+  string termination, and — given a game install — UUID, skill, status,
+  and stats-entry references against game data plus the mod's own
+  `Public/` content.
 - `Game` index over all paks with patch layering (base archives first,
   `PatchN` numerically after), merging stats/templates/localization
   layers; `lookup` resolving names, MapKey UUIDs, and localization
