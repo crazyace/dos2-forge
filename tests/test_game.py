@@ -305,6 +305,22 @@ def test_lookup_unique_gear_named_in_stats(tmp_path):
         assert "template " + helm_key in report
 
 
+def test_placed_item_with_explicit_type_reports_as_instance(game_dir):
+    # Level items often carry Type="item" rather than an "... instance"
+    # kind; the level field is what marks them as placed instances.
+    from dos2forge.game import RootTemplate
+    from dos2forge.lookup import _template_section
+
+    with Game(data_dir=game_dir) as game:
+        placed = RootTemplate(
+            map_key="c9e1fb97-0c98-4d24-b83c-33755f89b59a",
+            type="item",
+            level="FJ_FortJoy_Main",
+        )
+        section = _template_section(game, placed)
+    assert section.startswith("instance c9e1fb97")
+
+
 def test_lookup_falls_back_to_suggestions(game_dir):
     with Game(data_dir=game_dir) as game:
         result = lookup(game, "migo")

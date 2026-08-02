@@ -200,7 +200,9 @@ def _format_recipe(recipe) -> str:
 def _template_section(
     game: Game, template: RootTemplate, include_stats: bool = True
 ) -> str:
-    kind = "instance" if "instance" in template.type else "template"
+    # Level items with an explicit Type ("item") are still instances —
+    # only instances carry a level.
+    kind = "instance" if ("instance" in template.type or template.level) else "template"
     lines = [f"{kind} {template.map_key}"]
     base = game.templates.by_map_key.get(template.parent_template)
     for label, value in (
