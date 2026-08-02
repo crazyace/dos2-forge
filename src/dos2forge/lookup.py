@@ -58,6 +58,14 @@ def lookup(game: Game, query: str) -> LookupResult:
             for template in index.by_map_key.values():
                 if template.handle.split(";", 1)[0] == query:
                     result.sections.append(_template_section(game, template))
+        # Unique gear names live on stats entries (DisplayName), not on
+        # templates — walk that link too, through to the spawnable template.
+        for entry in game.stats:
+            if query in (
+                _handle_of(entry.data.get("DisplayName")),
+                _handle_of(entry.data.get("Description")),
+            ):
+                result.sections.extend(_stats_hit_sections(game, entry.name))
         return result
 
     if query in game.stats:
@@ -88,6 +96,20 @@ def lookup(game: Game, query: str) -> LookupResult:
                 result.sections.append(_template_section(game, template))
                 if len(result.sections) >= 10:
                     break
+    if result.found:
+        return result
+
+    # Unique gear again: the display name may exist only as a stats
+    # entry's DisplayName (the Tyrant set pieces work this way).
+    for entry in game.stats:
+        raw = entry.data.get("DisplayName")
+        if not raw:
+            continue
+        text = game.localization.resolve(raw, default="")
+        if text and _fold(text) == folded:
+            result.sections.extend(_stats_hit_sections(game, entry.name))
+            if len(result.sections) >= 10:
+                break
     if result.found:
         return result
 
@@ -130,6 +152,30 @@ def lookup(game: Game, query: str) -> LookupResult:
             if len(result.suggestions) >= _MAX_SUGGESTIONS:
                 break
     return result
+
+
+def _handle_of(raw: str | None) -> str:
+    """The handle part of a stats ``DisplayName`` value (``handle;version``)."""
+    return (raw or "").split(";", 1)[0]
+
+
+def _stats_hit_sections(game: Game, entry_name: str) -> list[str]:
+    """A stats entry plus every template it can be spawned through:
+    templates referencing the entry, and the entry's own RootTemplate."""
+    sections = [_stats_section(game, entry_name)]
+    shown: set[str] = set()
+    for index in (game.templates, game.level_instances):
+        for template in index.by_stats.get(entry_name, ()):
+            shown.add(template.map_key.lower())
+            sections.append(_template_section(game, template, include_stats=False))
+    root = game.stats.resolved(entry_name).get("RootTemplate", "")
+    if root and root.lower() not in shown:
+        template = game.templates.by_map_key.get(root.lower()) or (
+            game.templates.by_map_key.get(root)
+        )
+        if template:
+            sections.append(_template_section(game, template, include_stats=False))
+    return sections
 
 
 def _recipe_sections(game: Game, object_id: str) -> list[str]:
