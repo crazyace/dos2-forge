@@ -263,6 +263,48 @@ def test_level_instances_are_indexed(game_dir):
         assert "base name: LOOT_Migo_Ring" in report
 
 
+def test_lookup_unique_gear_named_in_stats(tmp_path):
+    # The Tyrant's Helm pattern: the display name lives on the stats
+    # entry's DisplayName, not on the template, and the stats entry
+    # points at the spawnable template via RootTemplate.
+    helm_key = "0000beef-0000-4000-8000-00000000a11c"
+    helm_handle = "h0eab23d2g6f9fg4eabg9111gbbadbbe56345"
+    pak = PakWriter(compression=CompressionMethod.LZ4)
+    pak.add(
+        "Public/Shared/RootTemplates/_merged.lsf",
+        _templates_lsf(
+            # Template's own DisplayName handle is unrelated; Stats
+            # attribute empty — only RootTemplate links back.
+            _template_node(helm_key, "ARM_UNIQUE_TyrantsHelm", "h9g9g9g9g7", "")
+        ),
+    )
+    pak.add(
+        "Public/Shared/Stats/Generated/Data/Armor.txt",
+        b'new entry "ARM_UNIQUE_TyrantsHelm"\ntype "Armor"\n'
+        b'data "DisplayName" "' + helm_handle.encode() + b';1"\n'
+        b'data "RootTemplate" "' + helm_key.encode() + b'"\n',
+    )
+    pak.add(
+        "Localization/English/english.xml",
+        write_localization(
+            [LocalizationEntry(handle=helm_handle, version=1, text="Tyrant's Helm")]
+        ),
+    )
+    pak.write(tmp_path / "Shared.pak")
+
+    with Game(data_dir=tmp_path) as game:
+        # Exact display name reaches the stats entry and the template.
+        report = format_report(lookup(game, "tyrant's helm"))
+        assert "stats entry ARM_UNIQUE_TyrantsHelm" in report
+        assert "template " + helm_key in report
+
+        # So does looking up the DisplayName handle directly.
+        report = format_report(lookup(game, helm_handle))
+        assert "text: Tyrant's Helm" in report
+        assert "stats entry ARM_UNIQUE_TyrantsHelm" in report
+        assert "template " + helm_key in report
+
+
 def test_lookup_falls_back_to_suggestions(game_dir):
     with Game(data_dir=game_dir) as game:
         result = lookup(game, "migo")
