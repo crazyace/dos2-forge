@@ -98,3 +98,13 @@ def test_cli_new_and_lint(tmp_path, capsys):
 
     # Same folder again must fail cleanly, not stack traces.
     assert main(["new", "TestMod", "-o", str(root), "--uuid", MOD_UUID]) == 1
+
+
+def test_cli_reports_os_errors_cleanly(tmp_path, capsys):
+    # An unusable output path (here: nested under a regular file; on
+    # Windows: characters like <>) must print a one-line error, not a
+    # traceback.
+    blocker = tmp_path / "a-file"
+    blocker.write_text("", "utf-8")
+    assert main(["new", "TestMod", "-o", str(blocker / "sub")]) == 1
+    assert capsys.readouterr().err.startswith("error:")
