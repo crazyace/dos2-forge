@@ -52,6 +52,9 @@ Early scaffold. What works today:
 | Lookup | `dos2forge lookup <name-or-UUID-or-handle>` with cross-references |
 | Template export | `dos2forge templates` → JSON of every MapKey UUID, name, display name, stats id |
 | Level instances | `dos2forge instances` → unique items/NPCs placed in levels, with their base template and level |
+| Crafting | `dos2forge recipes` → every ItemCombos recipe; lookup shows "ingredient in" / "crafted by" |
+| Typed datasets | `dos2forge export all` → skills/statuses/weapons/armor/potions/objects with resolved names/descriptions |
+| Script Extender | `dos2forge lua` → Lua constant modules (Templates/Instances/Skills/Statuses) for [ositools](https://github.com/Norbyte/ositools) scripting |
 
 On the roadmap (following bg3-forge's architecture): typed dataset models
 (items, skills, statuses), more exporters (CSV/SQLite), and mod authoring

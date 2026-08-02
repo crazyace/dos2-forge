@@ -103,6 +103,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     export_cmd.add_argument("-o", "--output", type=Path, default=Path("export"))
 
+    lua_cmd = sub.add_parser(
+        "lua",
+        help="generate Lua constant modules (Templates, Instances, Skills, Statuses) "
+        "for Script Extender mods",
+    )
+    lua_cmd.add_argument("-o", "--output", type=Path, default=Path("lua"))
+
     cache_cmd = sub.add_parser("cache", help="show or clear the parsed-index disk cache")
     cache_cmd.add_argument("action", nargs="?", choices=("info", "clear"), default="info")
 
@@ -216,6 +223,19 @@ def _dispatch(args) -> int:
             print(f"error: unsupported output format {suffix!r}", file=sys.stderr)
             return 1
         print(f"converted {args.input} -> {args.output}")
+        return 0
+
+    if args.command == "lua":
+        from ..game import Game
+        from ..luagen import generate_lua
+
+        args.output.mkdir(parents=True, exist_ok=True)
+        with Game(
+            path=args.game_path, data_dir=args.data_dir, use_cache=not args.no_cache
+        ) as game:
+            for file_name, source in generate_lua(game).items():
+                (args.output / file_name).write_text(source, "utf-8")
+                print(f"wrote {args.output / file_name}")
         return 0
 
     if args.command == "cache":
