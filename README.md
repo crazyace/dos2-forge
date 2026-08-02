@@ -112,6 +112,10 @@ id, and `Ext.GetStat` name in the Lua names something real — in game
 data or in the mod's own `Public/<Folder>/` stats and root templates.
 Structural problems are errors (exit 1); data references are warnings.
 
+For the full loop — lookup, scaffold, constants, script, lint, run —
+see the worked example in [docs/example.md](docs/example.md), which is
+pinned by an end-to-end test.
+
 ## Publish a reference site
 
 The exports can become a public, searchable UUID reference (the site
