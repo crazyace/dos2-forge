@@ -56,6 +56,22 @@ def game_dir(tmp_path):
         b'data "Damage Range" "4"\ndata "Damage Type" "Slashing"\n',
     )
     shared.add(
+        "Public/Shared/Stats/Generated/ItemCombos.txt",
+        b'new ItemCombination "PoisonFlask"\n'
+        b'data "Type 1" "Object"\ndata "Object 1" "CON_Herb_Boletus_A"\n'
+        b'data "Combine 1" "Base"\n'
+        b'data "Type 2" "Object"\ndata "Object 2" "CON_Flask_Water"\n'
+        b'data "Combine 2" "Base"\n\n'
+        b'new ItemCombinationResult "PoisonFlask_1"\n'
+        b'data "Result 1" "WPN_Sword_1H"\ndata "ResultAmount 1" "1"\n',
+    )
+    shared.add(
+        "Public/Shared/Stats/Generated/Data/Skill.txt",
+        b'new entry "Projectile_Fireball"\ntype "SkillData"\n'
+        b'data "DisplayName" "' + SWORD_HANDLE.encode() + b';1"\n'
+        b'data "Damage" "8"\n',
+    )
+    shared.add(
         "Localization/English/english.xml",
         write_localization(
             [LocalizationEntry(handle=SWORD_HANDLE, version=1, text="Iron Sword")]
@@ -165,8 +181,9 @@ def test_language_pak_under_localization_dir(game_dir):
     english.write(loc_dir / "English.pak")
     with Game(data_dir=game_dir) as game:
         assert game.templates.by_map_key[RING_KEY].display_name == "Migo's Ring"
-        result = lookup(game, "migo's ring")
-        assert any(RING_KEY in s for s in result.suggestions)
+        result = lookup(game, "migo's ring")  # exact display name -> full match
+        assert result.found
+        assert RING_KEY in format_report(result)
 
 
 def test_lookup_folds_typographic_apostrophes(game_dir):
@@ -183,8 +200,9 @@ def test_lookup_folds_typographic_apostrophes(game_dir):
     )
     english.write(loc_dir / "English.pak")
     with Game(data_dir=game_dir) as game:
-        result = lookup(game, "migo's ring")
-        assert any(RING_KEY in s for s in result.suggestions)
+        result = lookup(game, "migo's ring")  # folds ' vs U+2019 -> full match
+        assert result.found
+        assert RING_KEY in format_report(result)
 
 
 def test_stats_lookup_prints_shared_stats_once(game_dir):
@@ -233,9 +251,10 @@ def test_level_instances_are_indexed(game_dir):
         assert instance.parent_template == RING_KEY
         assert instance.display_name == "Migo's Ring"
 
-        # Fuzzy search by the localized name now reaches the instance.
+        # An exact localized name is a full match reaching the instance.
         result = lookup(game, "migo's ring")
-        assert any(RING_INSTANCE_KEY in s for s in result.suggestions)
+        assert result.found
+        assert RING_INSTANCE_KEY in format_report(result)
 
         # Direct UUID lookup shows the instance with its base template.
         report = format_report(lookup(game, RING_INSTANCE_KEY))
@@ -256,6 +275,57 @@ def test_read_prefers_patch_copy(game_dir):
     with Game(data_dir=game_dir) as game:
         data = game.read("Public/Shared/Stats/Generated/Data/Weapon.txt")
         assert b'using "WPN_Sword_1H"' in data  # the patch's delta file
+
+
+def test_recipes_indexed_and_cross_referenced(game_dir):
+    with Game(data_dir=game_dir) as game:
+        assert len(game.recipes) == 1
+        recipe = game.recipes.by_name["PoisonFlask"]
+        assert [i.object for i in recipe.ingredients] == [
+            "CON_Herb_Boletus_A", "CON_Flask_Water",
+        ]
+        assert recipe.results[0].object == "WPN_Sword_1H"
+        assert game.recipes.using_ingredient("CON_Flask_Water") == [recipe]
+        assert game.recipes.producing("WPN_Sword_1H") == [recipe]
+
+        report = format_report(lookup(game, "WPN_Sword_1H"))
+        assert (
+            "crafted by: PoisonFlask: CON_Herb_Boletus_A + CON_Flask_Water "
+            "-> WPN_Sword_1H x1" in report
+        )
+
+
+def test_exact_display_name_lookup_is_a_full_match(game_dir):
+    with Game(data_dir=game_dir) as game:
+        result = lookup(game, "iron sword")  # exact display name, folded
+        assert result.found
+        assert "template " + SWORD_KEY in format_report(result)
+
+
+def test_typed_datasets(game_dir):
+    from dos2forge.datasets import dataset
+
+    with Game(data_dir=game_dir) as game:
+        skills = dataset(game, "skills")
+        assert len(skills) == 1
+        skill = skills[0]
+        assert skill["name"] == "Projectile_Fireball"
+        assert skill["display_name"] == "Iron Sword"  # handle resolved
+        assert skill["data"]["Damage"] == "8"
+        weapons = dataset(game, "weapons")
+        assert [w["name"] for w in weapons] == ["WPN_Sword_1H"]
+        assert weapons[0]["data"]["Damage Range"] == "6"  # patch-layered
+
+
+def test_cli_recipes_and_export(game_dir, tmp_path, capsys):
+    out = tmp_path / "recipes.json"
+    assert main(["--data-dir", str(game_dir), "recipes", "-o", str(out)]) == 0
+    assert json.loads(out.read_text("utf-8"))[0]["name"] == "PoisonFlask"
+
+    export_dir = tmp_path / "export"
+    assert main(["--data-dir", str(game_dir), "export", "all", "-o", str(export_dir)]) == 0
+    skills = json.loads((export_dir / "skills.json").read_text("utf-8"))
+    assert skills[0]["name"] == "Projectile_Fireball"
 
 
 def test_cache_round_trip_and_invalidation(game_dir, tmp_path, monkeypatch):

@@ -6,6 +6,12 @@ from __future__ import annotations
 import pytest
 
 from dos2forge.pak import CompressionMethod, PakWriter
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cache(tmp_path, monkeypatch):
+    """Keep the parsed-index cache out of the real user cache dir."""
+    monkeypatch.setenv("DOS2FORGE_CACHE", str(tmp_path / "_forge_cache"))
 from dos2forge.parsers.lsx import LsxAttribute, LsxDocument, LsxNode
 
 WEAPON_TXT = b"""\

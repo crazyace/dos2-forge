@@ -28,6 +28,7 @@ from .pak.reader import PakError, PakReader, file_is_lspk
 from .parsers.localization import Localization, LocalizationError, parse_localization
 from .parsers.lsx import LsxNode
 from .parsers.resource import parse_resource
+from .parsers.itemcombos import Ingredient, Recipe, RecipeIndex, ResultItem, parse_item_combos
 from .parsers.stats import StatsCollection, StatsEntry, StatsParseError
 
 
@@ -325,6 +326,34 @@ class Game:
         self._cache_save(
             "instances", [asdict(t) for t in index.by_map_key.values()]
         )
+        return index
+
+    @cached_property
+    def recipes(self) -> RecipeIndex:
+        """Crafting recipes from every ``ItemCombos*.txt``, patch-layered."""
+        cached = self._cache_load("recipes")
+        if cached is not None:
+            index = RecipeIndex()
+            for record in cached:
+                index.add(
+                    Recipe(
+                        name=record["name"],
+                        ingredients=[Ingredient(**i) for i in record["ingredients"]],
+                        results=[ResultItem(**r) for r in record["results"]],
+                        data=record["data"],
+                        source=record["source"],
+                    )
+                )
+            return index
+        index = RecipeIndex()
+        for name, data in self._layered_matches("itemcombos", ".txt"):
+            if "/stats/generated/" not in name.lower():
+                continue
+            for recipe in parse_item_combos(
+                data.decode("utf-8-sig", errors="replace"), source=name
+            ):
+                index.add(recipe)
+        self._cache_save("recipes", [asdict(r) for r in index])
         return index
 
     def _cache_load(self, dataset: str):

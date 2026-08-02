@@ -90,6 +90,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     instances_cmd.add_argument("-o", "--output", type=Path, default=Path("instances.json"))
 
+    recipes_cmd = sub.add_parser("recipes", help="export crafting recipes as JSON")
+    recipes_cmd.add_argument("-o", "--output", type=Path, default=Path("recipes.json"))
+
+    export_cmd = sub.add_parser(
+        "export",
+        help="export typed datasets (skills, statuses, weapons, armor, potions, objects)",
+    )
+    export_cmd.add_argument(
+        "dataset",
+        choices=("skills", "statuses", "weapons", "armor", "potions", "objects", "all"),
+    )
+    export_cmd.add_argument("-o", "--output", type=Path, default=Path("export"))
+
     cache_cmd = sub.add_parser("cache", help="show or clear the parsed-index disk cache")
     cache_cmd.add_argument("action", nargs="?", choices=("info", "clear"), default="info")
 
@@ -258,6 +271,44 @@ def _dispatch(args) -> int:
             print(f"wrote {len(records)} {args.command} to {args.output}")
             for issue in game.load_issues:
                 print(f"warning: {issue.file}: {issue.error}", file=sys.stderr)
+        return 0
+
+    if args.command == "recipes":
+        import json
+        from dataclasses import asdict
+
+        from ..game import Game
+
+        with Game(
+            path=args.game_path, data_dir=args.data_dir, use_cache=not args.no_cache
+        ) as game:
+            records = [
+                asdict(r) for r in sorted(game.recipes, key=lambda r: r.name.lower())
+            ]
+            args.output.write_text(
+                json.dumps(records, indent=1, ensure_ascii=False) + "\n", "utf-8"
+            )
+            print(f"wrote {len(records)} recipes to {args.output}")
+        return 0
+
+    if args.command == "export":
+        import json
+
+        from ..datasets import DATASET_TYPES, dataset
+        from ..game import Game
+
+        names = sorted(DATASET_TYPES) if args.dataset == "all" else [args.dataset]
+        args.output.mkdir(parents=True, exist_ok=True)
+        with Game(
+            path=args.game_path, data_dir=args.data_dir, use_cache=not args.no_cache
+        ) as game:
+            for name in names:
+                records = dataset(game, name)
+                target = args.output / f"{name}.json"
+                target.write_text(
+                    json.dumps(records, indent=1, ensure_ascii=False) + "\n", "utf-8"
+                )
+                print(f"wrote {len(records)} {name} to {target}")
         return 0
 
     if args.command == "doctor":

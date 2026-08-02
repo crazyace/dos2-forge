@@ -323,6 +323,29 @@ class StatsCollection:
             data.update(entry.data)
         return data
 
+    def resolved_type(self, name: str) -> str:
+        """The effective entry type, walking the same chain as ``resolved``.
+
+        Patch deltas routinely redefine an entry without repeating its
+        ``type`` line; the type then comes from the earlier layer (or a
+        ``using`` ancestor).
+        """
+        seen_ids: set[int] = set()
+        cursor = self._entries.get(name)
+        while cursor is not None and id(cursor) not in seen_ids:
+            if cursor.type:
+                return cursor.type
+            seen_ids.add(id(cursor))
+            target = cursor.using
+            if target is None:
+                break
+            cursor = (
+                self._previous_layer(cursor)
+                if target == cursor.name
+                else self._entries.get(target)
+            )
+        return ""
+
     def _previous_layer(self, definition: StatsEntry) -> StatsEntry | None:
         """The definition of the same name loaded just before this one."""
         layers = self._layers.get(definition.name, [])

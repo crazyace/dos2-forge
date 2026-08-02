@@ -69,11 +69,24 @@ def lookup(game: Game, query: str) -> LookupResult:
                 result.sections.append(
                     _template_section(game, template, include_stats=False)
                 )
+        result.sections.extend(_recipe_sections(game, query))
         return result
 
     for index in indexes:
         for template in index.by_name.get(query.lower(), ()):
             result.sections.append(_template_section(game, template))
+    if result.found:
+        return result
+
+    # An exact display-name match (case- and apostrophe-folded) is as
+    # good as an identifier hit: show the full record(s).
+    folded = _fold(query)
+    for index in indexes:
+        for template in index.by_map_key.values():
+            if template.display_name and _fold(template.display_name) == folded:
+                result.sections.append(_template_section(game, template))
+                if len(result.sections) >= 10:
+                    break
     if result.found:
         return result
 
@@ -109,6 +122,25 @@ def lookup(game: Game, query: str) -> LookupResult:
             if len(result.suggestions) >= _MAX_SUGGESTIONS:
                 break
     return result
+
+
+def _recipe_sections(game: Game, object_id: str) -> list[str]:
+    """Crafting cross-references for a stats/template id."""
+    sections = []
+    used_in = game.recipes.using_ingredient(object_id)
+    produced_by = game.recipes.producing(object_id)
+    for label, recipes in (("ingredient in", used_in), ("crafted by", produced_by)):
+        for recipe in recipes[:10]:
+            sections.append(f"{label}: {_format_recipe(recipe)}")
+    return sections
+
+
+def _format_recipe(recipe) -> str:
+    inputs = " + ".join(i.object for i in recipe.ingredients if i.object) or "?"
+    outputs = ", ".join(
+        f"{r.object} x{r.amount}" for r in recipe.results if r.object
+    ) or "?"
+    return f"{recipe.name}: {inputs} -> {outputs}"
 
 
 def _template_section(
