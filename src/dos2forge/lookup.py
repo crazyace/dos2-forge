@@ -76,6 +76,7 @@ def lookup(game: Game, query: str) -> LookupResult:
         for template in index.by_name.get(query.lower(), ()):
             result.sections.append(_template_section(game, template))
     if result.found:
+        result.sections.extend(_recipe_sections(game, query))
         return result
 
     # An exact display-name match (case- and apostrophe-folded) is as
@@ -88,6 +89,13 @@ def lookup(game: Game, query: str) -> LookupResult:
                 if len(result.sections) >= 10:
                     break
     if result.found:
+        return result
+
+    # Ids that exist only in the crafting database (many recipe objects
+    # are neither stats entries nor template names).
+    recipe_sections = _recipe_sections(game, query)
+    if recipe_sections:
+        result.sections.extend(recipe_sections)
         return result
 
     # Fuzzy fallback: substring over template/instance names, display

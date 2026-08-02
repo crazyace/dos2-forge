@@ -295,6 +295,15 @@ def test_recipes_indexed_and_cross_referenced(game_dir):
         )
 
 
+def test_lookup_finds_recipe_only_ids(game_dir):
+    # CON_Flask_Water exists only as a recipe ingredient — no stats
+    # entry, no template — yet lookup must still find its recipes.
+    with Game(data_dir=game_dir) as game:
+        result = lookup(game, "CON_Flask_Water")
+        assert result.found
+        assert "ingredient in: PoisonFlask" in format_report(result)
+
+
 def test_exact_display_name_lookup_is_a_full_match(game_dir):
     with Game(data_dir=game_dir) as game:
         result = lookup(game, "iron sword")  # exact display name, folded
