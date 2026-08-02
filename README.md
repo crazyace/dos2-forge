@@ -55,10 +55,11 @@ Early scaffold. What works today:
 | Crafting | `dos2forge recipes` → every ItemCombos recipe; lookup shows "ingredient in" / "crafted by" |
 | Typed datasets | `dos2forge export all` → skills/statuses/weapons/armor/potions/objects with resolved names/descriptions |
 | Script Extender | `dos2forge lua` → Lua constant modules (Templates/Instances/Skills/Statuses) for [ositools](https://github.com/Norbyte/ositools) scripting |
+| SE scaffolding | `dos2forge new` → ready-to-load ositools mod skeleton: meta.lsx, `OsiToolsConfig.json`, bootstrap Lua files |
+| Lua lint | `dos2forge lint` → SE setup checks, `Ext.Require` targets, Lua block balance, UUID/skill/status references validated against game + mod data |
 
-On the roadmap (following bg3-forge's architecture): typed dataset models
-(items, skills, statuses), more exporters (CSV/SQLite), and mod authoring
-helpers.
+On the roadmap (following bg3-forge's architecture): more exporters
+(CSV/SQLite) and mod authoring helpers (stats and root template writers).
 
 ## Quick start
 
@@ -82,6 +83,34 @@ The first `lookup`/`templates`/`instances` run parses the whole install
 pak's size and mtime, so later runs are near-instant and any game patch
 invalidates automatically. `dos2forge cache` shows the location/size,
 `dos2forge cache clear` empties it, `--no-cache` bypasses it.
+
+## Script Extender mods
+
+Forge scaffolds and checks [ositools](https://github.com/Norbyte/ositools)
+mods, following the layout and `OsiToolsConfig.json` conventions from the
+ositools documentation:
+
+```console
+$ dos2forge new "Vampiric Blades" --author You -o MyProject
+$ dos2forge lua -o "MyProject/Mods/VampiricBlades_<uuid>/Story/RawFiles/Lua/Generated"
+$ dos2forge lint MyProject
+```
+
+`new` writes the `Mods/<Name_UUID>/` skeleton the game and SE actually
+load: `meta.lsx` (DOS2-native numeric-type LSX with packed int32
+version), `OsiToolsConfig.json` (`RequiredExtensionVersion`, `ModTable`,
+`FeatureFlags`), and `BootstrapServer.lua`/`BootstrapClient.lua` — the
+only two files SE loads by itself — each requiring a starter
+`Server/Main.lua` / `Client/Main.lua`.
+
+`lint` catches what fails silently in game: FeatureFlag typos (an
+unknown flag just leaves scripting dead), missing bootstraps,
+`Ext.Require` targets that don't exist (or differ in case — pak paths
+are case-sensitive), unbalanced Lua blocks and unterminated strings.
+With a game install it also verifies that every UUID, skill id, status
+id, and `Ext.GetStat` name in the Lua names something real — in game
+data or in the mod's own `Public/<Folder>/` stats and root templates.
+Structural problems are errors (exit 1); data references are warnings.
 
 ## Publish a reference site
 

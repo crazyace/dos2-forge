@@ -110,6 +110,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     lua_cmd.add_argument("-o", "--output", type=Path, default=Path("lua"))
 
+    new_cmd = sub.add_parser(
+        "new", help="scaffold a Script Extender (ositools) mod project"
+    )
+    new_cmd.add_argument("name", help="mod name, e.g. MyMod")
+    new_cmd.add_argument(
+        "-o", "--output", type=Path, default=Path("."),
+        help="project root to create Mods/<Name_UUID>/ under (default: .)",
+    )
+    new_cmd.add_argument("--author", default="")
+    new_cmd.add_argument("--description", default="")
+    new_cmd.add_argument("--uuid", help="module UUID (default: a fresh random one)")
+    new_cmd.add_argument(
+        "--mod-table",
+        help="ModTable name for OsiToolsConfig.json (default: the mod name)",
+    )
+    new_cmd.add_argument(
+        "--extension-version", type=int, default=None,
+        help="RequiredExtensionVersion for OsiToolsConfig.json",
+    )
+    new_cmd.add_argument(
+        "--flag", action="append", dest="flags", metavar="FLAG",
+        help="FeatureFlag to enable, repeatable (default: Lua, OsirisExtensions)",
+    )
+
+    lint_cmd = sub.add_parser(
+        "lint",
+        help="lint Script Extender mod sources: config, bootstraps, Ext.Require "
+        "targets, Lua block balance, and UUID/skill/status references",
+    )
+    lint_cmd.add_argument(
+        "path", type=Path, nargs="?", default=Path("."),
+        help="mod project root or Mods/<Name_UUID> folder (default: .)",
+    )
+    lint_cmd.add_argument(
+        "--no-game", action="store_true",
+        help="skip game-data reference checks (no install needed)",
+    )
+
     cache_cmd = sub.add_parser("cache", help="show or clear the parsed-index disk cache")
     cache_cmd.add_argument("action", nargs="?", choices=("info", "clear"), default="info")
 
@@ -237,6 +275,56 @@ def _dispatch(args) -> int:
                 (args.output / file_name).write_text(source, "utf-8")
                 print(f"wrote {args.output / file_name}")
         return 0
+
+    if args.command == "new":
+        from ..semod import DEFAULT_EXTENSION_VERSION, scaffold_mod
+
+        result = scaffold_mod(
+            args.output,
+            args.name,
+            author=args.author,
+            description=args.description,
+            mod_uuid=args.uuid,
+            mod_table=args.mod_table,
+            feature_flags=(
+                tuple(args.flags) if args.flags else ("Lua", "OsirisExtensions")
+            ),
+            extension_version=(
+                args.extension_version
+                if args.extension_version is not None
+                else DEFAULT_EXTENSION_VERSION
+            ),
+        )
+        for created in result.files:
+            print(f"wrote {created}")
+        print(f"scaffolded {result.folder} (module UUID {result.uuid})")
+        return 0
+
+    if args.command == "lint":
+        from ..game import Game, GameNotFoundError
+        from ..lualint import format_issues, lint_path
+
+        game = None
+        if not args.no_game:
+            try:
+                game = Game(
+                    path=args.game_path,
+                    data_dir=args.data_dir,
+                    use_cache=not args.no_cache,
+                )
+            except GameNotFoundError:
+                print(
+                    "warning: no game install found — structural checks only "
+                    "(silence with --no-game)",
+                    file=sys.stderr,
+                )
+        try:
+            issues = lint_path(args.path, game)
+        finally:
+            if game is not None:
+                game.close()
+        print(format_issues(issues))
+        return 1 if any(i.severity == "error" for i in issues) else 0
 
     if args.command == "cache":
         from .. import cache
